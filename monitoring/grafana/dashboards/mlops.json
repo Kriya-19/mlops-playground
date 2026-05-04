@@ -1,0 +1,73 @@
+{
+  "title": "MLOps Playground",
+  "uid": "mlops-main",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "15s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total API Requests",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{
+        "expr": "sum(increase(mlops_request_total[5m]))",
+        "legendFormat": "Requests/5m"
+      }],
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 2,
+      "title": "API Error Rate",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{
+        "expr": "sum(increase(mlops_request_total{status_code=~\"5..\"}[5m]))",
+        "legendFormat": "Errors/5m"
+      }],
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 3,
+      "title": "Total Predictions",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{
+        "expr": "sum(model_predict_total{status=\"success\"})",
+        "legendFormat": "Predictions"
+      }],
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 4,
+      "title": "Avg Prediction Latency (ms)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{
+        "expr": "avg(rate(model_predict_latency_seconds_sum[5m]) / rate(model_predict_latency_seconds_count[5m])) * 1000",
+        "legendFormat": "Avg ms"
+      }],
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 5,
+      "title": "Request Rate Over Time",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{
+        "expr": "sum by (endpoint) (rate(mlops_request_total[1m]))",
+        "legendFormat": "{{endpoint}}"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "Prediction Latency by Model",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{
+        "expr": "rate(model_predict_latency_seconds_sum[1m]) / rate(model_predict_latency_seconds_count[1m]) * 1000",
+        "legendFormat": "{{model_id}}"
+      }]
+    }
+  ]
+}

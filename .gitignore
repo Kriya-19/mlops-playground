@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+mlops.db
+deployed_models/
+*.pkl
+*.joblib
+.sonarwork/
+.scannerwork/
