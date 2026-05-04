@@ -26,8 +26,11 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:///./mlops.db
       - UPLOAD_DIR=/app/deployed_models
       - DEPLOY_MODE=docker
-      - SNS_ENABLED=false
+      - SNS_ENABLED=true
       - AWS_REGION=ap-south-1
+      - SNS_TOPIC_ARN=${SNS_TOPIC_ARN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - PORT_RANGE_START=8100
       - PORT_RANGE_END=8199
     volumes:
