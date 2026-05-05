@@ -141,7 +141,15 @@ for model in models:
                         with st.spinner("Running inference..."):
                             result = predict(model["port"], features)
                         rcol1, rcol2, rcol3 = st.columns(3)
-                        rcol1.metric("Prediction", result["prediction"])
+                        pred = result.get("prediction")
+                        # Streamlit metric expects a scalar (int/float/str/None).
+                        # If the model returns a list (e.g. [0]), show the first
+                        # element for convenience, otherwise stringify.
+                        if isinstance(pred, (list, tuple)):
+                            display_pred = pred[0] if len(pred) == 1 else str(pred)
+                        else:
+                            display_pred = pred
+                        rcol1.metric("Prediction", display_pred)
                         rcol2.metric("Latency", f"{result['latency_ms']} ms")
                         if result.get("predict_proba"):
                             rcol3.metric("Confidence", f"{max(result['predict_proba'][0]):.2%}")

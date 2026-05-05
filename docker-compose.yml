@@ -1,8 +1,7 @@
-version: "3.9"
-
 networks:
   mlops-net:
     driver: bridge
+
 
 volumes:
   prometheus-data:
@@ -12,31 +11,38 @@ volumes:
   sonarqube_logs:
   sonardb_data:
 
+
 services:
+
 
   # ── FastAPI Backend ──────────────────────────────────────────────────────
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: backend/Dockerfile
     container_name: mlops-backend
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./mlops.db
       - UPLOAD_DIR=/app/deployed_models
-      - DEPLOY_MODE=docker
-      - SNS_ENABLED=true
-      - AWS_REGION=ap-south-1
+      - DEPLOY_MODE=${DEPLOY_MODE}
+      - SNS_ENABLED=${SNS_ENABLED}
+      - AWS_REGION=${AWS_REGION}
       - SNS_TOPIC_ARN=${SNS_TOPIC_ARN}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - PORT_RANGE_START=8100
       - PORT_RANGE_END=8199
+      - WORKSPACE_PATH=/workspace
+    env_file:
+      - .env
     volumes:
       - ./deployed_models:/app/deployed_models
       - ./mlops.db:/app/mlops.db
+      - ./model_template:/app/model_template
       - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace
     networks:
       - mlops-net
     restart: unless-stopped
@@ -46,11 +52,12 @@ services:
       timeout: 5s
       retries: 3
 
+
   # ── Streamlit Frontend ───────────────────────────────────────────────────
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: app/Dockerfile
     container_name: mlops-frontend
     ports:
       - "8501:8501"
@@ -63,15 +70,18 @@ services:
       - mlops-net
     restart: unless-stopped
 
+
   # ── Prometheus ───────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: mlops-prometheus
+    user: root
     ports:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -80,6 +90,7 @@ services:
     networks:
       - mlops-net
     restart: unless-stopped
+
 
   # ── Grafana ──────────────────────────────────────────────────────────────
   grafana:
@@ -105,6 +116,7 @@ services:
       - mlops-net
     restart: unless-stopped
 
+
   # ── SonarQube ────────────────────────────────────────────────────────────
   sonarqube:
     image: sonarqube:community
@@ -128,6 +140,7 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+
 
   # ── SonarQube DB ─────────────────────────────────────────────────────────
   sonardb:

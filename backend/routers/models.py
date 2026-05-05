@@ -1,8 +1,11 @@
 import os
 import uuid
 import aiofiles
+import requests
+import socket
+import struct
 from datetime import datetime, timezone
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -132,3 +135,144 @@ async def delete_model(model_id: str, db: AsyncSession = Depends(get_db)):
 
     await db.delete(model)
     await db.commit()
+
+
+@router.post('/proxy/predict')
+async def proxy_predict(payload: dict = Body(...)) -> dict:
+    """Proxy prediction requests from the frontend to model containers.
+
+    Expects JSON: {"port": 8100, "features": [...]}
+    This avoids container localhost networking issues by letting the backend
+    forward requests to the host-mapped model ports.
+    """
+    port = payload.get('port')
+    features = payload.get('features')
+    if not port or features is None:
+        raise HTTPException(status_code=400, detail='Missing port or features.')
+
+    def _get_docker_host_gateway() -> str:
+        """Return the host gateway IP for the container's network by reading /proc/net/route.
+
+        Falls back to '172.17.0.1' if detection fails.
+        """
+        try:
+            with open('/proc/net/route') as f:
+                for line in f:
+                    fields = line.strip().split()
+                    if len(fields) >= 3 and fields[1] == '00000000':
+                        gw_hex = fields[2]
+                        gw = socket.inet_ntoa(struct.pack('<L', int(gw_hex, 16)))
+                        return gw
+        except Exception:
+            pass
+        return '172.17.0.1'
+
+    host_ip = _get_docker_host_gateway()
+    url = f'http://{host_ip}:{port}/predict'
+    try:
+        resp = requests.post(url, json={'features': features}, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as first_exc:
+        # Fallback: try to locate a container that publishes this port and
+        # forward directly to the container's internal port (8000) using its
+        # container name on the compose network. This requires Docker socket
+        # access from the backend container.
+        import subprocess
+
+        try:
+            cp = subprocess.run(
+                [
+                    'docker',
+                    'ps',
+                    '--filter',
+                    f'publish={port}',
+                    '--format',
+                    '{{.Names}}',
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            cname = cp.stdout.strip().splitlines()[0] if cp.stdout.strip() else None
+            if cname:
+                alt_url = f'http://{cname}:8000/predict'
+                try:
+                    resp2 = requests.post(alt_url, json={'features': features}, timeout=10)
+                    resp2.raise_for_status()
+                    return resp2.json()
+                except requests.RequestException:
+                    pass
+        except Exception:
+            pass
+
+        raise HTTPException(status_code=502, detail=f'Upstream request failed: {first_exc}')
+
+
+@router.get('/proxy/health')
+async def proxy_health(port: int) -> dict:
+    """Proxy health check requests from the frontend to model containers.
+
+    Query param: ?port=8100
+    This avoids container localhost networking issues by letting the backend
+    forward requests to the host-mapped model ports.
+    """
+    if not port:
+        raise HTTPException(status_code=400, detail='Missing port parameter.')
+
+    def _get_docker_host_gateway() -> str:
+        """Return the host gateway IP for the container's network by reading /proc/net/route.
+
+        Falls back to '172.17.0.1' if detection fails.
+        """
+        try:
+            with open('/proc/net/route') as f:
+                for line in f:
+                    fields = line.strip().split()
+                    if len(fields) >= 3 and fields[1] == '00000000':
+                        gw_hex = fields[2]
+                        gw = socket.inet_ntoa(struct.pack('<L', int(gw_hex, 16)))
+                        return gw
+        except Exception:
+            pass
+        return '172.17.0.1'
+
+    host_ip = _get_docker_host_gateway()
+    url = f'http://{host_ip}:{port}/health'
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as first_exc:
+        # Fallback: try to locate a container that publishes this port and
+        # forward directly to the container's internal port (8000) using its
+        # container name on the compose network.
+        import subprocess
+
+        try:
+            cp = subprocess.run(
+                [
+                    'docker',
+                    'ps',
+                    '--filter',
+                    f'publish={port}',
+                    '--format',
+                    '{{.Names}}',
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            cname = cp.stdout.strip().splitlines()[0] if cp.stdout.strip() else None
+            if cname:
+                alt_url = f'http://{cname}:8000/health'
+                try:
+                    resp2 = requests.get(alt_url, timeout=5)
+                    resp2.raise_for_status()
+                    return resp2.json()
+                except requests.RequestException:
+                    pass
+        except Exception:
+            pass
+
+        raise HTTPException(status_code=502, detail=f'Upstream request failed: {first_exc}')

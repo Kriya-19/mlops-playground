@@ -49,17 +49,19 @@ def stop_model(model_id: str) -> dict:
 
 
 def predict(port: int, features: list[float]) -> dict:
+    # Use backend proxy to avoid container-localhost networking issues
     resp = requests.post(
-        f"http://localhost:{port}/predict",
-        json={"features": features},
-        timeout=10,
+        f"{BASE_URL}/models/proxy/predict",
+        json={"port": port, "features": features},
+        timeout=15,
     )
     resp.raise_for_status()
     return resp.json()
 
 
 def model_health(port: int) -> dict:
-    resp = requests.get(f"http://localhost:{port}/health", timeout=5)
+    # Use backend proxy to avoid container-localhost networking issues
+    resp = requests.get(f"{BASE_URL}/models/proxy/health?port={port}", timeout=5)
     resp.raise_for_status()
     return resp.json()
 

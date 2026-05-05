@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy model server
 COPY serve.py .
 
+# Copy the trained model into the image so the server can load it on startup
+COPY model.pkl .
+
 # model.pkl will be bind-mounted or copied in at deploy time
 # ENV values injected by docker run command
 

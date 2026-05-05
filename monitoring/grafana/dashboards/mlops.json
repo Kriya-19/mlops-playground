@@ -65,7 +65,7 @@
       "type": "timeseries",
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
       "targets": [{
-        "expr": "rate(model_predict_latency_seconds_sum[1m]) / rate(model_predict_latency_seconds_count[1m]) * 1000",
+        "expr": "(rate(model_predict_latency_seconds_sum[1m]) / rate(model_predict_latency_seconds_count[1m])) * 1000",
         "legendFormat": "{{model_id}}"
       }]
     }

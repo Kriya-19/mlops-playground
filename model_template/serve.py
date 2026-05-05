@@ -4,6 +4,8 @@ import joblib
 import pickle
 import numpy as np
 import logging
+from typing import Any
+from collections.abc import Sequence
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
@@ -60,6 +62,32 @@ def load_model():
     return model
 
 
+def _normalize_features(features: Sequence) -> np.ndarray:
+    """Convert nested feature payloads into a single flat numeric row."""
+
+    def _flatten(values: Sequence) -> list:
+        flattened: list = []
+        for value in values:
+            if isinstance(value, (list, tuple, np.ndarray)):
+                flattened.extend(_flatten(value))
+            else:
+                flattened.append(value)
+        return flattened
+
+    flat_features = _flatten(features)
+
+    try:
+        return np.asarray([float(value) for value in flat_features], dtype=np.float64).reshape(1, -1)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Features must be a flat list of numeric values. "
+                f"Received: {features!r}"
+            ),
+        ) from exc
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     model_store["model"] = load_model()
@@ -80,7 +108,7 @@ app = FastAPI(
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 class PredictRequest(BaseModel):
-    features: list[float] = Field(
+    features: list[Any] = Field(
         ...,
         description="Flat list of feature values. e.g. [5.1, 3.5, 1.4, 0.2]",
         examples=[[5.1, 3.5, 1.4, 0.2]],
@@ -132,8 +160,48 @@ async def predict(request: PredictRequest):
 
     start = time.time()
     try:
-        X = np.array(request.features).reshape(1, -1)
+        X = _normalize_features(request.features)
+
+        expected_features = getattr(model, "n_features_in_", None)
+        if expected_features is not None and X.shape[1] != expected_features:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Expected {expected_features} features, but received {X.shape[1]}. "
+                    "Check the comma-separated input length."
+                ),
+            )
+
         prediction = model.predict(X).tolist()
+
+        # Try to map prediction indices/classes to human-readable names
+        def _map_class_label(cls):
+            """Convert class label to string, handling numpy types and known mappings."""
+            # If it's already a string, return it
+            if isinstance(cls, str):
+                return cls
+            # For numeric indices, try known dataset mappings (e.g., Iris)
+            if isinstance(cls, (int, float, np.integer, np.floating)):
+                idx = int(cls)
+                # Iris dataset mapping (common for demos)
+                iris_classes = ['setosa', 'versicolor', 'virginica']
+                if 0 <= idx < len(iris_classes):
+                    return iris_classes[idx]
+            # Try to convert numpy types to python types
+            try:
+                return cls.item()
+            except (AttributeError, TypeError):
+                return str(cls)
+
+        # Apply mapping to predictions
+        if hasattr(model, "classes_"):
+            try:
+                if len(prediction) == 1:
+                    prediction = [_map_class_label(prediction[0])]
+                else:
+                    prediction = [_map_class_label(c) for c in prediction]
+            except Exception:
+                pass  # fallback to raw prediction
 
         proba = None
         if hasattr(model, "predict_proba"):
@@ -162,6 +230,8 @@ async def predict(request: PredictRequest):
             detail=f"Feature shape mismatch: {str(e)}. "
                    f"Check the number of features your model expects.",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         PREDICT_COUNT.labels(model_id=MODEL_ID, status="error").inc()
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")

@@ -1,0 +1,78 @@
+{
+  "dashboard": {
+    "title": "MLOps Model Monitoring",
+    "tags": ["mlops", "models"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "10s",
+    "uid": "mlops-models",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Predictions per Second",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "rate(model_predict_total[1m])",
+            "legendFormat": "{{model_id}} - {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "P95 Latency (ms)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "histogram_quantile(0.95, rate(model_predict_latency_seconds_bucket[5m])) * 1000",
+            "legendFormat": "{{model_id}}"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Total Predictions",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 8, "x": 0, "y": 8},
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum by (model_id) (model_predict_total{status='success'})",
+            "legendFormat": "{{model_id}}"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Error Rate",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 8, "x": 8, "y": 8},
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "sum(rate(model_predict_total{status='error'}[5m])) / sum(rate(model_predict_total[5m]))",
+            "legendFormat": "Error %"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Model Uptime",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 8, "x": 16, "y": 8},
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "model_uptime_seconds",
+            "legendFormat": "{{model_id}}"
+          }
+        ]
+      }
+    ]
+  }
+}
