@@ -9,6 +9,7 @@ on:
 env:
   DOCKER_IMAGE_BACKEND: ${{ secrets.DOCKER_USERNAME }}/mlops-backend
   DOCKER_IMAGE_FRONTEND: ${{ secrets.DOCKER_USERNAME }}/mlops-frontend
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
 
@@ -96,7 +97,7 @@ jobs:
           fetch-depth: 0
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v4
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
