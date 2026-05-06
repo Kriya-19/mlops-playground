@@ -127,7 +127,7 @@ async def _git_commit(model_name: str, model_id: str, port: int):
                 return
         
         msg = f"deploy: {model_name} ({short}) → port {port} [auto]"
-        rc, _, err = await _run(f'git -C "{WORKSPACE_PATH}" commit -m "{msg}"')
+        rc, _, err = await _run(f'git -C "{WORKSPACE_PATH}" commit --allow-empty -m "{msg}"')
         if rc == 0:
             logger.info(f"✅ Git commit created for {model_name} deployment")
         else:
