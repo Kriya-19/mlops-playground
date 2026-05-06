@@ -27,6 +27,9 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:///./mlops.db
       - UPLOAD_DIR=/app/deployed_models
       - DEPLOY_MODE=${DEPLOY_MODE}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GH_TOKEN=${GH_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-Kriya-19/mlops-playground}
       - SNS_ENABLED=${SNS_ENABLED}
       - AWS_REGION=${AWS_REGION}
       - SNS_TOPIC_ARN=${SNS_TOPIC_ARN}

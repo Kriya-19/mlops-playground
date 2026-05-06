@@ -26,6 +26,8 @@ TEMPLATE_DIR     = Path(__file__).resolve().parents[2] / "model_template"
 PORT_RANGE_START = int(os.getenv("PORT_RANGE_START", "8100"))
 PORT_RANGE_END   = int(os.getenv("PORT_RANGE_END", "8199"))
 WORKSPACE_PATH   = os.getenv("WORKSPACE_PATH", "/workspace")
+GITHUB_TOKEN     = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+GITHUB_REPO      = os.getenv("GITHUB_REPO", "Kriya-19/mlops-playground")
 NETWORK_NAME     = "mlops-playground_mlops-net"
 PROMETHEUS_URL   = "http://mlops-prometheus:9090"
 
@@ -130,10 +132,27 @@ async def _git_commit(model_name: str, model_id: str, port: int):
         rc, _, err = await _run(f'git -C "{WORKSPACE_PATH}" commit --allow-empty -m "{msg}"')
         if rc == 0:
             logger.info(f"✅ Git commit created for {model_name} deployment")
+            await _git_push()
         else:
             logger.debug(f"git commit skipped: {err}")
     except Exception as e:
         logger.warning(f"Git commit error: {e}")
+
+
+async def _git_push():
+    """Push deployment commits to GitHub when credentials are available."""
+    if not GITHUB_TOKEN:
+        logger.info("Git push skipped: no GITHUB_TOKEN/GH_TOKEN available.")
+        return
+
+    remote_url = f"https://x-access-token:{GITHUB_TOKEN}@github.com/{GITHUB_REPO}.git"
+    rc, _, err = await _run(
+        f'git -C "{WORKSPACE_PATH}" push {remote_url} HEAD:main'
+    )
+    if rc == 0:
+        logger.info("✅ Git push to GitHub completed")
+    else:
+        logger.warning(f"Git push failed: {err}")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

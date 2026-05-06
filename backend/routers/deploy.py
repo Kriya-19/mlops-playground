@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
+import logging
 
 from backend.database import get_db, MLModel
 from backend.models.schemas import DeployRequest, DeployResponse, ModelStatus
 from backend.services.docker_service import deploy_model_container, stop_model_container
+from backend.services.sns_service import send_alert
 
 router = APIRouter(prefix="/deploy", tags=["Deployment"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=DeployResponse)
@@ -52,6 +55,21 @@ async def deploy_model(request: DeployRequest, db: AsyncSession = Depends(get_db
         model.container_id = container_id
         model.updated_at = datetime.now(timezone.utc)
         await db.commit()
+
+        try:
+            await send_alert(
+                subject=f"MLOps model deployed: {model.name}",
+                message=(
+                    f"Model deployed successfully.\n\n"
+                    f"Model: {model.name}\n"
+                    f"Model ID: {model.model_id}\n"
+                    f"Port: {port}\n"
+                    f"Endpoint: http://localhost:{port}\n"
+                    f"Status: running"
+                ),
+            )
+        except Exception as alert_exc:
+            logger.warning(f"SNS deployment alert skipped: {alert_exc}")
 
         return DeployResponse(
             model_id=model.model_id,
