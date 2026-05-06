@@ -17,7 +17,7 @@ st.title("📊 Monitoring Dashboard")
 st.markdown("Real-time metrics from Prometheus for all deployed models.")
 st.markdown("---")
 
-PROMETHEUS_URL = "http://localhost:9090"
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
 
 
 def query_prometheus(query: str) -> list:
@@ -35,18 +35,18 @@ def query_prometheus(query: str) -> list:
         return []
 
 
+def prometheus_live() -> bool:
+    try:
+        resp = requests.get(f"{PROMETHEUS_URL}/-/healthy", timeout=3)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 # ── Backend metrics ────────────────────────────────────────────────────────
 st.markdown("### 🔧 Backend API Metrics")
 
-prom_live = bool(query_prometheus("up") or requests.get(
-    f"{PROMETHEUS_URL}/-/healthy", timeout=3
-).status_code == 200 if True else False)
-
-try:
-    requests.get(f"{PROMETHEUS_URL}/-/healthy", timeout=2)
-    prom_live = True
-except Exception:
-    prom_live = False
+prom_live = bool(query_prometheus("up")) or prometheus_live()
 
 if not prom_live:
     st.warning("⚠️ Prometheus is not running yet. It will be available after Step 5 (Docker Compose).")
@@ -145,4 +145,4 @@ st.markdown("---")
 st.markdown("### 🔗 Quick Links (available after Step 5)")
 col1, col2 = st.columns(2)
 col1.markdown("- 📈 [Grafana Dashboard](http://localhost:3000) — Visual dashboards")
-col2.markdown("- 🔥 [Prometheus UI](http://localhost:9090) — Raw metrics explorer")
+col2.markdown(f"- 🔥 [Prometheus UI]({PROMETHEUS_URL}) — Raw metrics explorer")
