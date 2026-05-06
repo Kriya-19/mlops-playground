@@ -101,7 +101,6 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=mlops-playground
-            -Dsonar.projectName=MLOps Playground
             -Dsonar.sources=backend,app
             -Dsonar.exclusions=**/__pycache__/**,**/*.pyc,deployed_models/**,venv/**,.github/**
             -Dsonar.python.version=3.12
