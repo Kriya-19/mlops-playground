@@ -13,6 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
+RUN git config --system user.name "MLOps Bot" \
+    && git config --system user.email "mlops-bot@example.com" \
+    && git config --system --add safe.directory /workspace
+
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

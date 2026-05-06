@@ -32,10 +32,25 @@ PROMETHEUS_URL   = "http://mlops-prometheus:9090"
 
 # ── Port helpers ──────────────────────────────────────────────────────────────
 
+def _get_docker_host_gateway() -> str:
+    """Return the Docker host gateway IP as seen from inside the backend container."""
+    try:
+        with open("/proc/net/route") as f:
+            for line in f:
+                fields = line.strip().split()
+                if len(fields) >= 3 and fields[1] == "00000000":
+                    gw_hex = fields[2]
+                    return socket.inet_ntoa(struct.pack("<L", int(gw_hex, 16)))
+    except Exception:
+        pass
+    return "172.17.0.1"
+
+
 def _is_port_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
-        return s.connect_ex(("localhost", port)) != 0
+        host = _get_docker_host_gateway()
+        return s.connect_ex((host, port)) != 0
 
 
 def _find_free_port() -> int:
@@ -101,10 +116,15 @@ async def _git_commit(model_name: str, model_id: str, port: int):
     """Auto-commit a deployment record to git."""
     try:
         short = model_id[:8]
+        await _run(f'git -C "{WORKSPACE_PATH}" config --global --add safe.directory "{WORKSPACE_PATH}" || true')
         rc, _, err = await _run(f'git -C "{WORKSPACE_PATH}" add -A')
         if rc != 0:
-            logger.warning(f"git add failed: {err}")
-            return
+            if "dubious ownership" in err.lower():
+                await _run(f'git -C "{WORKSPACE_PATH}" config --global --add safe.directory "{WORKSPACE_PATH}" || true')
+                rc, _, err = await _run(f'git -C "{WORKSPACE_PATH}" add -A')
+            if rc != 0:
+                logger.warning(f"git add failed: {err}")
+                return
         
         msg = f"deploy: {model_name} ({short}) → port {port} [auto]"
         rc, _, err = await _run(f'git -C "{WORKSPACE_PATH}" commit -m "{msg}"')
@@ -180,23 +200,37 @@ async def deploy_model_container(
         f'--label prometheus_job=mlops-models',
     ])
 
-    run_cmd = (
-        f"docker run -d "
-        f"--name {container_name} "
-        f"{net_arg}"
-        f"-p {port}:8000 "
-        f"-e MODEL_ID={model_id} "
-        f"-e MODEL_NAME='{model_name}' "
-        f"-e MODEL_PATH=/app/model.pkl "
-        f"--restart unless-stopped "
-        f"{labels} "
-        f"{image_tag}"
-    )
-    logger.info(f"Starting container on port {port}...")
-    rc, container_id, err = await _run(run_cmd)
-    if rc != 0:
+    container_id = ""
+    last_err = ""
+    for attempt in range(3):
+        await _run(f"docker rm -f {container_name} 2>/dev/null || true")
+        run_cmd = (
+            f"docker run -d "
+            f"--name {container_name} "
+            f"{net_arg}"
+            f"-p {port}:8000 "
+            f"-e MODEL_ID={model_id} "
+            f"-e MODEL_NAME='{model_name}' "
+            f"-e MODEL_PATH=/app/model.pkl "
+            f"--restart unless-stopped "
+            f"{labels} "
+            f"{image_tag}"
+        )
+        logger.info(f"Starting container on port {port} (attempt {attempt + 1}/3)...")
+        rc, container_id, err = await _run(run_cmd)
+        if rc == 0:
+            break
+        last_err = err
+        if "port is already allocated" in err.lower() or "bind for 0.0.0.0" in err.lower():
+            logger.warning(f"Port {port} busy, retrying with a new free port...")
+            port = _find_free_port()
+            continue
         logger.error(f"Docker run failed:\nSTDERR: {err}")
         raise RuntimeError(f"Docker run failed:\n{err}")
+
+    if rc != 0:
+        logger.error(f"Docker run failed after retries:\nSTDERR: {last_err}")
+        raise RuntimeError(f"Docker run failed after retries:\n{last_err}")
 
     # ── Wait for health ──────────────────────────────────────────────────────
     await _wait_for_health(container_name)
